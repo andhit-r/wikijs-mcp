@@ -1,0 +1,13 @@
+name: Automated Test
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Automated test (lint + unit) di Docker
+        run: make test

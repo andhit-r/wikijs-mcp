@@ -1,0 +1,22 @@
+# release.yml — KOMPOSISI: GitHub Release + Docker image ke GHCR (proyek service).
+# Dua job independen. Semver, isi catatan rilis, dan pembuatan tag = skill git-workflow.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write     # untuk GitHub Release
+  packages: write     # untuk push image ke GHCR
+
+jobs:
+  github-release:
+    uses: andhit-r/github-release/.github/workflows/release.yml@v1
+    secrets: inherit
+
+  docker-image:
+    uses: andhit-r/release-docker-image-ghcr/.github/workflows/ghcr.yml@v2
+    with:
+      dockerfile: Dockerfile
+    secrets: inherit

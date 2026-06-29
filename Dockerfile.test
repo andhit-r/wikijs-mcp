@@ -1,0 +1,16 @@
+# Image khusus automated test (lint + unit). Source di-COPY (BUKAN bind-mount):
+# artefak (coverage, __pycache__, .pytest_cache) hidup di container & terhapus saat --rm.
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Deps aplikasi (dari pyproject) + tooling test lebih dulu → layer cache.
+# README.md ikut karena dirujuk field readme di pyproject saat `pip install .`.
+COPY pyproject.toml README.md requirements-test.txt ./
+COPY src ./src
+RUN pip install --no-cache-dir . \
+    && pip install --no-cache-dir -r requirements-test.txt
+
+# Source penuh (pengecualian diatur .dockerignore) → termasuk tests/ & konfigurasi lint.
+COPY . .
