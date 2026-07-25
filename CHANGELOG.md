@@ -7,6 +7,12 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Tool domain `mail`: `wikijs_mail_update_config` (mutation `mail.updateConfig`, semantik
+  REPLACE-ALL) dan `wikijs_mail_send_test` (mutation `mail.sendTest`) — mengatur dan
+  memverifikasi konfigurasi SMTP instance Wiki.js. Menuntut API key dengan hak
+  `manage:system`.
+
 ## [0.1.0] - 2026-06-29
 
 ### Added

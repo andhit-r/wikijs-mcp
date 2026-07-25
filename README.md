@@ -10,6 +10,12 @@ MCP server untuk mengakses **Wiki.js** melalui GraphQL API, dibangun dengan Fast
 | search | `wikijs_page_search` |
 | tags | `wikijs_tag_list`, `wikijs_page_list_by_tags` |
 | system | `wikijs_system_info` |
+| mail | `wikijs_mail_update_config`, `wikijs_mail_send_test` |
+
+> **Domain `mail` menuntut hak `manage:system`.** Berbeda dari domain lain, kedua tool
+> `mail` hanya bisa dipakai dengan API key Wiki.js milik grup Administrators (hak
+> `manage:system`). `wikijs_mail_update_config` juga bersifat REPLACE-ALL — satu
+> panggilan menimpa seluruh konfigurasi mail instance, bukan hanya field yang disebut.
 
 ## Konfigurasi
 
