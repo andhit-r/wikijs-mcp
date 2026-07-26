@@ -7,6 +7,8 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-27
+
 ### Added
 - Tool domain `groups`: `wikijs_group_list`, `wikijs_group_get`, `wikijs_group_create`,
   `wikijs_group_update`, `wikijs_group_delete`, `wikijs_group_assign_user`,
