@@ -17,6 +17,11 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   REPLACE-ALL) dan `wikijs_mail_send_test` (mutation `mail.sendTest`) — mengatur dan
   memverifikasi konfigurasi SMTP instance Wiki.js. Menuntut API key dengan hak
   `manage:system`.
+- Tool domain `users`: `wikijs_user_list`, `wikijs_user_get`, `wikijs_user_create`,
+  `wikijs_user_update`, `wikijs_user_delete`, `wikijs_user_activate`,
+  `wikijs_user_deactivate`, `wikijs_user_enable_tfa`, `wikijs_user_disable_tfa` —
+  mengelola akun user Wiki.js (buat, baca, patch-per-field, hapus, aktif/nonaktif, TFA).
+  Kredensial (`password_raw`/`new_password`) tidak pernah di-echo di return value.
 
 ## [0.1.0] - 2026-06-29
 

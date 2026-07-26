@@ -10,6 +10,7 @@ MCP server untuk mengakses **Wiki.js** melalui GraphQL API, dibangun dengan Fast
 | search | `wikijs_page_search` |
 | tags | `wikijs_tag_list`, `wikijs_page_list_by_tags` |
 | groups | `wikijs_group_list`, `wikijs_group_get`, `wikijs_group_create`, `wikijs_group_update`, `wikijs_group_delete`, `wikijs_group_assign_user`, `wikijs_group_unassign_user` |
+| users | `wikijs_user_list`, `wikijs_user_get`, `wikijs_user_create`, `wikijs_user_update`, `wikijs_user_delete`, `wikijs_user_activate`, `wikijs_user_deactivate`, `wikijs_user_enable_tfa`, `wikijs_user_disable_tfa` |
 | system | `wikijs_system_info` |
 | mail | `wikijs_mail_update_config`, `wikijs_mail_send_test` |
 
