@@ -8,6 +8,11 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
+- Tool domain `groups`: `wikijs_group_list`, `wikijs_group_get`, `wikijs_group_create`,
+  `wikijs_group_update`, `wikijs_group_delete`, `wikijs_group_assign_user`,
+  `wikijs_group_unassign_user` — mengelola group (grup permission) Wiki.js dan
+  keanggotaan user di dalamnya. `wikijs_group_update` bersifat patch-per-field (field
+  yang tidak diisi tidak dikirim, beda dari `wikijs_mail_update_config`).
 - Tool domain `mail`: `wikijs_mail_update_config` (mutation `mail.updateConfig`, semantik
   REPLACE-ALL) dan `wikijs_mail_send_test` (mutation `mail.sendTest`) — mengatur dan
   memverifikasi konfigurasi SMTP instance Wiki.js. Menuntut API key dengan hak
