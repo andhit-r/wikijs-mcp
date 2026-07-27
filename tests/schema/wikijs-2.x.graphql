@@ -1,9 +1,10 @@
-# SDL Wiki.js 2.x — domain "groups" beserta tipe yang dirujuknya.
+# SDL Wiki.js 2.x — domain "groups", "pages" (termasuk "tags" & "search" yang
+# menumpang padanya), "users", "mail", "system", beserta tipe yang dirujuknya.
 #
-# Sumber: skema GraphQL resmi Wiki.js 2.x (server/graph/schemas/group.graphql +
-# common.graphql upstream Requarks/wiki), diringkas SEKALIGUS diverifikasi
-# ulang terhadap error introspeksi HTTP 400 GRAPHQL_VALIDATION_FAILED yang
-# dialami andhit-r/wikijs-mcp#4 pada instance Wiki.js Cantum (Wiki.js 2.5.x):
+# Sumber domain "groups": skema GraphQL resmi Wiki.js 2.x (server/graph/schemas/
+# group.graphql + common.graphql upstream Requarks/wiki), diringkas SEKALIGUS
+# diverifikasi ulang terhadap error introspeksi HTTP 400 GRAPHQL_VALIDATION_FAILED
+# yang dialami andhit-r/wikijs-mcp#4 pada instance Wiki.js Cantum (Wiki.js 2.5.x):
 #   - "Cannot query field \"userCount\" on type \"Group\"" -> userCount HANYA
 #     ada di GroupMinimal (dipakai groups.list), bukan di Group.
 #   - "Field \"pageRules\" of type \"[PageRule]\" must have a selection of
@@ -12,23 +13,50 @@
 #     of type \"...\" used in position expecting type \"...!\"" -> kelima
 #     argumen groups.update() non-null (REPLACE-ALL, bukan patch-per-field).
 #
-# HANYA domain "groups" & tipe yang benar-benar dirujuk tools/groups.py.
-# Field "users" pada Group SENGAJA TIDAK disertakan — di luar cakupan
-# andhit-r/wikijs-mcp#4 (lihat "Tidak termasuk" pada issue tersebut); belum
-# perlu dideklarasikan karena tidak pernah diseleksi tools/groups.py saat ini.
+# Sumber domain "pages"/"users"/"mail"/"system" (andhit-r/wikijs-mcp#5): skema
+# GraphQL resmi upstream Requarks/wiki tag v2.5.314 (rilis 2.5.x terbaru saat
+# pengerjaan #5, konsisten dengan penomoran "Wiki.js 2.5.x" yang sudah dicatat
+# #4 di atas — SDL ini TIDAK bercampur antar versi rilis Wiki.js):
+# server/graph/schemas/{page,user,mail,system,common}.graphql.
 #
-# Perubahan field di sini WAJIB diverifikasi ulang lewat introspeksi terhadap
-# instance Wiki.js target sebelum di-commit — jangan menulis dari asumsi.
+# HANYA tipe & field yang BENAR-BENAR dirujuk modul tools/*.py yang disertakan —
+# bukan salinan utuh skema resmi (mis. field yang butuh permission "manage:system"
+# atau operasi admin lain yang tak dipakai tool ini sengaja tidak dituliskan).
+# Perubahan field di sini WAJIB diverifikasi ulang lewat skema resmi/introspeksi
+# terhadap instance Wiki.js target sebelum di-commit — jangan menulis dari asumsi.
+#
+# Modul "users" SENGAJA TIDAK divalidasi penuh oleh gate positif — lihat
+# _KNOWN_INVALID_MODULES di tests/test_tools_schema.py:
+#   - wikijs_user_update mengirim argumen "isActive" yang TIDAK ADA pada
+#     UserMutation.update Wiki.js 2.x.
+#   - wikijs_user_delete mendeklarasikan $replaceId sebagai variabel nullable
+#     padahal UserMutation.delete.replaceId bersifat non-null tanpa default.
+# Kedua temuan menuntut perubahan semantik kontrak tool, di luar cakupan
+# andhit-r/wikijs-mcp#5 (lihat "Tidak termasuk" di sana) — dilacak di
+# andhit-r/wikijs-mcp#7. Tipe User*/UserMutation/UserQuery di bawah tetap
+# dituliskan AKURAT terhadap skema resmi (bukan mengikuti dokumen tool yang
+# salah) agar validasi terhadapnya — termasuk pengecekan anti-basi pada modul
+# yang dikecualikan — tetap bermakna.
 
 scalar Date
 
 type Query {
   groups: GroupQuery
+  pages: PageQuery
+  users: UserQuery
+  system: SystemQuery
 }
 
 type Mutation {
   groups: GroupMutation
+  pages: PageMutation
+  users: UserMutation
+  mail: MailMutation
 }
+
+# ---------------------------------------------------------------------------
+# GROUPS (andhit-r/wikijs-mcp#4 — tidak diubah oleh #5)
+# ---------------------------------------------------------------------------
 
 type GroupQuery {
   list: [GroupMinimal]!
@@ -99,6 +127,250 @@ enum PageRuleMatch {
   REGEX
   TAG
 }
+
+# ---------------------------------------------------------------------------
+# PAGES (andhit-r/wikijs-mcp#5) — termasuk domain "tags" (tools/tags.py) &
+# "search" (tools/search.py), keduanya menumpang pada PageQuery: Wiki.js tidak
+# punya domain top-level terpisah yang dipakai kedua tool tersebut.
+# ---------------------------------------------------------------------------
+
+type PageQuery {
+  search(query: String!, path: String, locale: String): PageSearchResponse!
+  list(orderBy: PageOrderBy): [PageListItem!]!
+  single(id: Int!): Page
+  singleByPath(path: String!, locale: String!): Page
+  tags: [PageTag]!
+  tree(path: String, parent: Int, mode: PageTreeMode!, locale: String!): [PageTreeItem]
+}
+
+type PageMutation {
+  create(
+    content: String!
+    description: String!
+    editor: String!
+    isPublished: Boolean!
+    isPrivate: Boolean!
+    locale: String!
+    path: String!
+    tags: [String]!
+    title: String!
+  ): PageResponse
+  update(
+    id: Int!
+    content: String
+    description: String
+    editor: String
+    isPrivate: Boolean
+    isPublished: Boolean
+    locale: String
+    tags: [String]
+    title: String
+  ): PageResponse
+  move(id: Int!, destinationPath: String!, destinationLocale: String!): DefaultResponse
+  delete(id: Int!): DefaultResponse
+  render(id: Int!): DefaultResponse
+}
+
+type PageResponse {
+  responseResult: ResponseStatus!
+  page: Page
+}
+
+type Page {
+  id: Int!
+  path: String!
+  title: String!
+  description: String!
+  content: String!
+  render: String
+  contentType: String!
+  editor: String!
+  locale: String!
+  isPublished: Boolean!
+  isPrivate: Boolean!
+  tags: [PageTag]!
+  authorName: String!
+  creatorName: String!
+  createdAt: Date!
+  updatedAt: Date!
+}
+
+type PageTag {
+  id: Int!
+  tag: String!
+  title: String
+  createdAt: Date!
+  updatedAt: Date!
+}
+
+# PENTING: berbeda dari Page.tags ([PageTag]!), PageListItem.tags bertipe
+# [String] (daftar string polos, TANPA subfield) — menyeleksinya sebagai
+# "tags { tag }" (seperti semula ditulis tools/tags.py) ditolak Wiki.js:
+# "Field \"tags\" must not have a selection since type \"String\" has no
+# subfields."
+type PageListItem {
+  id: Int!
+  path: String!
+  locale: String!
+  title: String
+  contentType: String!
+  updatedAt: Date!
+  tags: [String]
+}
+
+type PageTreeItem {
+  id: Int!
+  path: String!
+  title: String!
+  isFolder: Boolean!
+  pageId: Int
+  locale: String!
+}
+
+type PageSearchResponse {
+  results: [PageSearchResult]!
+  suggestions: [String]!
+  totalHits: Int!
+}
+
+type PageSearchResult {
+  id: String!
+  title: String!
+  description: String!
+  path: String!
+  locale: String!
+}
+
+enum PageOrderBy {
+  CREATED
+  PATH
+  TITLE
+  UPDATED
+}
+
+enum PageTreeMode {
+  FOLDERS
+  PAGES
+  ALL
+}
+
+# ---------------------------------------------------------------------------
+# USERS (andhit-r/wikijs-mcp#5) — lihat catatan _KNOWN_INVALID_MODULES di atas.
+# UserMutation.update SENGAJA tidak memuat "isActive" (field itu tidak ada di
+# skema resmi) dan UserMutation.delete.replaceId SENGAJA non-null (Int!,
+# sesuai skema resmi) — keduanya akurat terhadap Wiki.js, BUKAN mengikuti
+# dokumen tools/users.py yang salah, supaya gate anti-basi tetap bermakna.
+# ---------------------------------------------------------------------------
+
+type UserQuery {
+  list: [UserMinimal]
+  single(id: Int!): User
+}
+
+type UserMutation {
+  create(
+    email: String!
+    name: String!
+    passwordRaw: String
+    providerKey: String!
+    groups: [Int]!
+    mustChangePassword: Boolean
+    sendWelcomeEmail: Boolean
+  ): UserResponse
+  update(
+    id: Int!
+    email: String
+    name: String
+    newPassword: String
+    groups: [Int]
+    location: String
+    jobTitle: String
+    timezone: String
+  ): DefaultResponse
+  delete(id: Int!, replaceId: Int!): DefaultResponse
+  activate(id: Int!): DefaultResponse
+  deactivate(id: Int!): DefaultResponse
+  enableTFA(id: Int!): DefaultResponse
+  disableTFA(id: Int!): DefaultResponse
+}
+
+type UserResponse {
+  responseResult: ResponseStatus!
+  user: User
+}
+
+type UserMinimal {
+  id: Int!
+  name: String!
+  email: String!
+  providerKey: String!
+  isSystem: Boolean!
+  isActive: Boolean!
+  createdAt: Date!
+  lastLoginAt: Date
+}
+
+type User {
+  id: Int!
+  name: String!
+  email: String!
+  providerKey: String!
+  isSystem: Boolean!
+  isActive: Boolean!
+  isVerified: Boolean!
+  location: String!
+  jobTitle: String!
+  timezone: String!
+  createdAt: Date!
+  updatedAt: Date!
+  lastLoginAt: Date
+  groups: [Group]!
+}
+
+# ---------------------------------------------------------------------------
+# MAIL (andhit-r/wikijs-mcp#5) — tools/mail.py hanya memanggil mutation;
+# MailQuery.config tidak dirujuk sehingga tidak dituliskan.
+# ---------------------------------------------------------------------------
+
+type MailMutation {
+  sendTest(recipientEmail: String!): DefaultResponse
+  updateConfig(
+    senderName: String!
+    senderEmail: String!
+    host: String!
+    port: Int!
+    name: String!
+    secure: Boolean!
+    verifySSL: Boolean!
+    user: String!
+    pass: String!
+    useDKIM: Boolean!
+    dkimDomainName: String!
+    dkimKeySelector: String!
+    dkimPrivateKey: String!
+  ): DefaultResponse
+}
+
+# ---------------------------------------------------------------------------
+# SYSTEM (andhit-r/wikijs-mcp#5) — tools/system.py hanya memanggil query.
+# ---------------------------------------------------------------------------
+
+type SystemQuery {
+  info: SystemInfo
+}
+
+type SystemInfo {
+  currentVersion: String
+  latestVersion: String
+  platform: String
+  dbType: String
+  operatingSystem: String
+  nodeVersion: String
+}
+
+# ---------------------------------------------------------------------------
+# COMMON — dipakai lintas domain (groups, pages, users, mail).
+# ---------------------------------------------------------------------------
 
 type DefaultResponse {
   responseResult: ResponseStatus!

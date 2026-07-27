@@ -50,7 +50,15 @@ def register(mcp: FastMCP, client: WikiJSGraphQLClient) -> None:
         if not query or not query.strip():
             raise ValueError("query pencarian tidak boleh kosong")
 
-        gql_query = """
+        search_term = query.strip()
+
+        # Nama variabel dokumen GraphQL sengaja bernama `query` (bukan mis.
+        # `gql_query`) meski parameter tool juga bernama `query` (kata kunci
+        # pencarian, sudah disimpan di `search_term` di atas) -- gate validasi
+        # skema offline (tests/test_tools_schema.py, andhit-r/wikijs-mcp#5)
+        # mengekstrak dokumen lewat AST dari assignment bernama persis
+        # `query`/`mutation`; nama lain membuatnya tidak terekstrak sama sekali.
+        query = """
         query($query: String!, $path: String, $locale: String) {
           pages {
             search(query: $query, path: $path, locale: $locale) {
@@ -67,13 +75,13 @@ def register(mcp: FastMCP, client: WikiJSGraphQLClient) -> None:
           }
         }
         """
-        variables: dict[str, Any] = {"query": query.strip()}
+        variables: dict[str, Any] = {"query": search_term}
         if path is not None:
             variables["path"] = path
         if locale is not None:
             variables["locale"] = locale
 
-        data = await client.execute(gql_query, variables, operation="page_search")
+        data = await client.execute(query, variables, operation="page_search")
         return data.get("pages", {}).get(
             "search", {"results": [], "suggestions": [], "totalHits": 0}
         )

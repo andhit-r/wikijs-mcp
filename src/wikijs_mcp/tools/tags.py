@@ -90,7 +90,7 @@ def register(mcp: FastMCP, client: WikiJSGraphQLClient) -> None:
               locale
               contentType
               updatedAt
-              tags { tag }
+              tags
             }
           }
         }
@@ -104,7 +104,7 @@ def register(mcp: FastMCP, client: WikiJSGraphQLClient) -> None:
         for page in all_pages:
             if locale and page.get("locale") != locale:
                 continue
-            page_tags = {t.get("tag", "").lower().strip() for t in (page.get("tags") or [])}
+            page_tags = {t.lower().strip() for t in (page.get("tags") or [])}
             if target_tags.issubset(page_tags):
                 page_out = {k: v for k, v in page.items() if k != "tags"}
                 result.append(page_out)

@@ -21,6 +21,26 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   kini divalidasi otomatis di `make test` terhadap SDL Wiki.js 2.x yang di-commit
   (`tests/schema/wikijs-2.x.graphql`) agar ketidakcocokan skema serupa gagal di test, bukan
   di produksi. Lihat `andhit-r/wikijs-mcp#4`.
+- `wikijs_page_list_by_tags` (domain `tags`) selalu gagal `AttributeError` terhadap Wiki.js
+  2.x sungguhan: query `pages.list` menyeleksi `tags { tag }` padahal field `tags` pada
+  `PageListItem` bertipe `[String]` (daftar string polos, tanpa subfield) — bukan `[PageTag]`
+  seperti pada `Page.tags`. Query kini menyeleksi `tags` langsung dan pemfilteran lokal
+  memperlakukan tiap entrinya sebagai string. Lihat `andhit-r/wikijs-mcp#5`.
+
+### Changed
+- Gate validasi skema GraphQL offline (`andhit-r/wikijs-mcp#4`) diperluas dari domain
+  `groups` saja ke **seluruh** modul `src/wikijs_mcp/tools/` (`pages`, `users`, `mail`,
+  `tags`, `search`, `system`, `groups`). SDL `tests/schema/wikijs-2.x.graphql` kini juga
+  mencakup domain `pages`/`users`/`mail`/`system` (skema resmi Wiki.js 2.5.x, tag
+  upstream `v2.5.314`), dan validatornya (`tests/test_tools_schema.py`, menggantikan
+  `tests/test_groups_schema.py`) diparametrisasi per modul — daftar modul dibaca dari isi
+  direktori `src/wikijs_mcp/tools/`, bukan hardcoded, sehingga modul tool baru otomatis
+  ikut tervalidasi. `src/wikijs_mcp/tools/search.py` sedikit direstrukturisasi (nama
+  variabel dokumen GraphQL, tanpa mengubah perilaku) agar bisa diekstrak gate ini.
+  Modul `users` untuk sementara dikecualikan dari gate positif (`wikijs_user_update`
+  mengirim argumen `isActive` yang tidak ada pada skema Wiki.js, dan `wikijs_user_delete`
+  menganggap `replace_id` opsional padahal Wiki.js mewajibkannya) — kedua temuan menuntut
+  perubahan semantik kontrak tool, dilacak di `andhit-r/wikijs-mcp#7`.
 
 ## [0.2.0] - 2026-07-27
 

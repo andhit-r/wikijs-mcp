@@ -21,7 +21,7 @@ _PAGES_WITH_TAGS = [
         "locale": "en",
         "contentType": "markdown",
         "updatedAt": "2024-01-01",
-        "tags": [{"tag": "wiki"}, {"tag": "home"}],
+        "tags": ["wiki", "home"],
     },
     {
         "id": 2,
@@ -30,7 +30,7 @@ _PAGES_WITH_TAGS = [
         "locale": "en",
         "contentType": "markdown",
         "updatedAt": "2024-01-01",
-        "tags": [{"tag": "wiki"}],
+        "tags": ["wiki"],
     },
 ]
 
