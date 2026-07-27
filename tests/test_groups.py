@@ -7,6 +7,7 @@ pernah memanggil instance Wiki.js sungguhan.
 from __future__ import annotations
 
 import json
+import uuid
 
 import httpx
 import pytest
@@ -48,8 +49,16 @@ _SINGLE_RESPONSE = {
                 "isSystem": False,
                 "redirectOnLogin": "/",
                 "permissions": ["read:pages", "write:pages"],
-                "pageRules": [],
-                "userCount": 2,
+                "pageRules": [
+                    {
+                        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                        "deny": False,
+                        "match": "START",
+                        "roles": ["read:pages"],
+                        "path": "en/public",
+                        "locales": ["en"],
+                    }
+                ],
                 "createdAt": "2024-02-01T00:00:00.000Z",
                 "updatedAt": "2024-02-02T00:00:00.000Z",
             }
@@ -66,6 +75,10 @@ def _success_result() -> dict[str, object]:
 
 def _failure_result(message: str) -> dict[str, object]:
     return {"succeeded": False, "errorCode": 6001, "message": message}
+
+
+def _update_success_response() -> dict[str, object]:
+    return {"data": {"groups": {"update": {"responseResult": _success_result()}}}}
 
 
 # --- wikijs_group_list --------------------------------------------------
@@ -88,7 +101,7 @@ async def test_group_list_success(mcp: FastMCP, respx_mock) -> None:
 
 
 async def test_group_get_success(mcp: FastMCP, respx_mock) -> None:
-    """group_id valid → dict tunggal sesuai field groups.single."""
+    """group_id valid → dict tunggal sesuai field groups.single, tanpa userCount."""
     respx_mock.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=_SINGLE_RESPONSE))
 
     data = await call_tool(mcp, "wikijs_group_get", {"group_id": 3})
@@ -96,6 +109,8 @@ async def test_group_get_success(mcp: FastMCP, respx_mock) -> None:
     assert data["id"] == 3
     assert data["name"] == "Editors"
     assert data["permissions"] == ["read:pages", "write:pages"]
+    assert data["pageRules"] == _SINGLE_RESPONSE["data"]["groups"]["single"]["pageRules"]
+    assert "userCount" not in data
 
 
 async def test_group_get_not_found_returns_none(mcp: FastMCP, respx_mock) -> None:
@@ -204,28 +219,46 @@ async def test_group_create_forbidden(mcp: FastMCP, respx_mock) -> None:
 # --- wikijs_group_update ----------------------------------------------------
 
 
-async def test_group_update_partial_fields_only_sends_filled_variables(
-    mcp: FastMCP, respx_mock
-) -> None:
-    """Hanya name diisi → variabel GraphQL terkirim hanya untuk id+name."""
-    response = {"data": {"groups": {"update": {"responseResult": _success_result()}}}}
-    route = respx_mock.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=response))
+async def test_group_update_partial_reads_current_state_first(mcp: FastMCP, respx_mock) -> None:
+    """Hanya permissions diisi → groups.single dibaca lebih dulu, lalu satu mutation
+    berisi kelima variabel; name/redirectOnLogin/pageRules berasal dari respons single.
+    """
+    single_route = respx_mock.post(GRAPHQL_URL).mock(
+        side_effect=[
+            httpx.Response(200, json=_SINGLE_RESPONSE),
+            httpx.Response(200, json=_update_success_response()),
+        ]
+    )
 
-    data = await call_tool(mcp, "wikijs_group_update", {"group_id": 3, "name": "Editors 2"})
+    data = await call_tool(
+        mcp,
+        "wikijs_group_update",
+        {"group_id": 3, "permissions": ["manage:pages"]},
+    )
 
     assert data == {"status": "updated"}
-    body = json.loads(route.calls.last.request.content)
-    variables = body["variables"]
-    assert variables == {"id": 3, "name": "Editors 2"}
-    assert "redirectOnLogin" not in variables
-    assert "permissions" not in variables
-    assert "pageRules" not in variables
+    assert single_route.call_count == 2
+
+    read_body = json.loads(single_route.calls[0].request.content)
+    assert read_body["variables"] == {"id": 3}
+
+    update_body = json.loads(single_route.calls[1].request.content)
+    variables = update_body["variables"]
+    current = _SINGLE_RESPONSE["data"]["groups"]["single"]
+    assert variables == {
+        "id": 3,
+        "name": current["name"],
+        "redirectOnLogin": current["redirectOnLogin"],
+        "permissions": ["manage:pages"],
+        "pageRules": current["pageRules"],
+    }
 
 
-async def test_group_update_all_fields_sent(mcp: FastMCP, respx_mock) -> None:
-    """Seluruh field diisi → seluruh variabel GraphQL ikut terkirim."""
-    response = {"data": {"groups": {"update": {"responseResult": _success_result()}}}}
-    route = respx_mock.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=response))
+async def test_group_update_all_fields_sends_single_request(mcp: FastMCP, respx_mock) -> None:
+    """Keempat argumen opsional terisi → tepat satu request HTTP (pembacaan dilewati)."""
+    route = respx_mock.post(GRAPHQL_URL).mock(
+        return_value=httpx.Response(200, json=_update_success_response())
+    )
 
     args = {
         "group_id": 3,
@@ -237,9 +270,9 @@ async def test_group_update_all_fields_sent(mcp: FastMCP, respx_mock) -> None:
     data = await call_tool(mcp, "wikijs_group_update", args)
 
     assert data == {"status": "updated"}
+    assert route.call_count == 1
     body = json.loads(route.calls.last.request.content)
-    variables = body["variables"]
-    assert variables == {
+    assert body["variables"] == {
         "id": 3,
         "name": "Editors 2",
         "redirectOnLogin": "/dashboard",
@@ -248,11 +281,110 @@ async def test_group_update_all_fields_sent(mcp: FastMCP, respx_mock) -> None:
     }
 
 
+async def test_group_update_page_rule_without_id_generates_uuid(mcp: FastMCP, respx_mock) -> None:
+    """page_rules satu entri tanpa id → variabel mutation memuat id non-kosong."""
+    route = respx_mock.post(GRAPHQL_URL).mock(
+        return_value=httpx.Response(200, json=_update_success_response())
+    )
+
+    args = {
+        "group_id": 3,
+        "name": "Editors",
+        "redirect_on_login": "/",
+        "permissions": [],
+        "page_rules": [
+            {
+                "deny": False,
+                "match": "START",
+                "roles": ["read:pages"],
+                "path": "en",
+            }
+        ],
+    }
+    data = await call_tool(mcp, "wikijs_group_update", args)
+
+    assert data == {"status": "updated"}
+    body = json.loads(route.calls.last.request.content)
+    sent_rule = body["variables"]["pageRules"][0]
+    assert sent_rule["id"]
+    assert uuid.UUID(sent_rule["id"])  # bentuk UUID valid, bukan sekadar non-kosong
+    assert sent_rule["deny"] is False
+    assert sent_rule["match"] == "START"
+    assert sent_rule["roles"] == ["read:pages"]
+    assert sent_rule["path"] == "en"
+    assert sent_rule["locales"] == []
+
+
+async def test_group_update_page_rule_invalid_match_raises(mcp: FastMCP, respx_mock) -> None:
+    """page_rules dengan match di luar enum valid → ValueError tanpa request HTTP."""
+    route = respx_mock.post(GRAPHQL_URL).mock(
+        return_value=httpx.Response(200, json=_update_success_response())
+    )
+
+    args = {
+        "group_id": 3,
+        "name": "Editors",
+        "redirect_on_login": "/",
+        "permissions": [],
+        "page_rules": [{"deny": False, "match": "MULAI", "roles": [], "path": "en"}],
+    }
+    with pytest.raises(Exception) as exc:
+        await call_tool(mcp, "wikijs_group_update", args)
+    assert "match" in str(exc.value).lower()
+    assert not route.called
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        {"match": "START", "roles": [], "path": "en"},  # deny hilang
+        {"deny": False, "roles": [], "path": "en"},  # match hilang
+        {"deny": False, "match": "START", "path": "en"},  # roles hilang
+        {"deny": False, "match": "START", "roles": []},  # path hilang
+        {"deny": "ya", "match": "START", "roles": [], "path": "en"},  # deny bukan bool
+    ],
+)
+async def test_group_update_page_rule_missing_field_raises(
+    mcp: FastMCP, respx_mock, rule: dict[str, object]
+) -> None:
+    """page_rules dengan field wajib hilang/salah tipe → ValueError tanpa request HTTP."""
+    route = respx_mock.post(GRAPHQL_URL).mock(
+        return_value=httpx.Response(200, json=_update_success_response())
+    )
+
+    args = {
+        "group_id": 3,
+        "name": "Editors",
+        "redirect_on_login": "/",
+        "permissions": [],
+        "page_rules": [rule],
+    }
+    with pytest.raises(Exception) as exc:
+        await call_tool(mcp, "wikijs_group_update", args)
+    assert "page_rules" in str(exc.value)
+    assert not route.called
+
+
+async def test_group_update_not_found_during_read_raises(mcp: FastMCP, respx_mock) -> None:
+    """groups.single mengembalikan null saat merge → WikiJSAPIError; mutation tidak
+    pernah terkirim."""
+    route = respx_mock.post(GRAPHQL_URL).mock(
+        return_value=httpx.Response(200, json=_SINGLE_NOT_FOUND_RESPONSE)
+    )
+
+    with pytest.raises(Exception) as exc:
+        await call_tool(mcp, "wikijs_group_update", {"group_id": 999, "name": "X"})
+    assert "999" in str(exc.value)
+    assert "group_update" in str(exc.value)
+    assert route.call_count == 1  # hanya request pembacaan, mutation tidak terkirim
+
+
 @pytest.mark.parametrize("group_id", [0, -5])
 async def test_group_update_invalid_id_raises(mcp: FastMCP, respx_mock, group_id: int) -> None:
     """group_id <= 0 → ValueError, tanpa request HTTP terkirim."""
-    response = {"data": {"groups": {"update": {"responseResult": _success_result()}}}}
-    route = respx_mock.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=response))
+    route = respx_mock.post(GRAPHQL_URL).mock(
+        return_value=httpx.Response(200, json=_update_success_response())
+    )
 
     with pytest.raises(Exception) as exc:
         await call_tool(mcp, "wikijs_group_update", {"group_id": group_id, "name": "X"})
@@ -261,14 +393,21 @@ async def test_group_update_invalid_id_raises(mcp: FastMCP, respx_mock, group_id
 
 
 async def test_group_update_failed(mcp: FastMCP, respx_mock) -> None:
-    """responseResult.succeeded=false → WikiJSAPIError."""
+    """responseResult.succeeded=false pada mutation itu sendiri → WikiJSAPIError."""
     response = {
         "data": {"groups": {"update": {"responseResult": _failure_result("Group not found")}}}
     }
     respx_mock.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=response))
 
+    args = {
+        "group_id": 999,
+        "name": "X",
+        "redirect_on_login": "/",
+        "permissions": [],
+        "page_rules": [],
+    }
     with pytest.raises(Exception) as exc:
-        await call_tool(mcp, "wikijs_group_update", {"group_id": 999, "name": "X"})
+        await call_tool(mcp, "wikijs_group_update", args)
     assert "Group not found" in str(exc.value)
 
 

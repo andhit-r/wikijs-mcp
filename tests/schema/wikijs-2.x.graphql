@@ -1,0 +1,112 @@
+# SDL Wiki.js 2.x — domain "groups" beserta tipe yang dirujuknya.
+#
+# Sumber: skema GraphQL resmi Wiki.js 2.x (server/graph/schemas/group.graphql +
+# common.graphql upstream Requarks/wiki), diringkas SEKALIGUS diverifikasi
+# ulang terhadap error introspeksi HTTP 400 GRAPHQL_VALIDATION_FAILED yang
+# dialami andhit-r/wikijs-mcp#4 pada instance Wiki.js Cantum (Wiki.js 2.5.x):
+#   - "Cannot query field \"userCount\" on type \"Group\"" -> userCount HANYA
+#     ada di GroupMinimal (dipakai groups.list), bukan di Group.
+#   - "Field \"pageRules\" of type \"[PageRule]\" must have a selection of
+#     subfields" -> pageRules bertipe [PageRule], wajib subfield.
+#   - "Variable \"$name\"/\"$redirectOnLogin\"/\"$permissions\"/\"$pageRules\"
+#     of type \"...\" used in position expecting type \"...!\"" -> kelima
+#     argumen groups.update() non-null (REPLACE-ALL, bukan patch-per-field).
+#
+# HANYA domain "groups" & tipe yang benar-benar dirujuk tools/groups.py.
+# Field "users" pada Group SENGAJA TIDAK disertakan — di luar cakupan
+# andhit-r/wikijs-mcp#4 (lihat "Tidak termasuk" pada issue tersebut); belum
+# perlu dideklarasikan karena tidak pernah diseleksi tools/groups.py saat ini.
+#
+# Perubahan field di sini WAJIB diverifikasi ulang lewat introspeksi terhadap
+# instance Wiki.js target sebelum di-commit — jangan menulis dari asumsi.
+
+scalar Date
+
+type Query {
+  groups: GroupQuery
+}
+
+type Mutation {
+  groups: GroupMutation
+}
+
+type GroupQuery {
+  list: [GroupMinimal]!
+  single(id: Int!): Group
+}
+
+type GroupMutation {
+  create(name: String!): GroupResponse
+  update(
+    id: Int!
+    name: String!
+    redirectOnLogin: String!
+    permissions: [String]!
+    pageRules: [PageRuleInput]!
+  ): DefaultResponse
+  delete(id: Int!): DefaultResponse
+  assignUser(groupId: Int!, userId: Int!): DefaultResponse
+  unassignUser(groupId: Int!, userId: Int!): DefaultResponse
+}
+
+type Group {
+  id: Int!
+  name: String!
+  isSystem: Boolean!
+  redirectOnLogin: String!
+  permissions: [String]!
+  pageRules: [PageRule]!
+  createdAt: Date!
+  updatedAt: Date!
+}
+
+type GroupMinimal {
+  id: Int!
+  name: String!
+  isSystem: Boolean!
+  userCount: Int!
+  createdAt: Date!
+  updatedAt: Date!
+}
+
+type GroupResponse {
+  responseResult: ResponseStatus!
+  group: Group
+}
+
+type PageRule {
+  id: String!
+  deny: Boolean!
+  match: PageRuleMatch!
+  roles: [String]!
+  path: String!
+  locales: [String]!
+}
+
+input PageRuleInput {
+  id: String!
+  deny: Boolean!
+  match: PageRuleMatch!
+  roles: [String]!
+  path: String!
+  locales: [String]!
+}
+
+enum PageRuleMatch {
+  START
+  EXACT
+  END
+  REGEX
+  TAG
+}
+
+type DefaultResponse {
+  responseResult: ResponseStatus!
+}
+
+type ResponseStatus {
+  succeeded: Boolean!
+  errorCode: Int!
+  slug: String
+  message: String
+}

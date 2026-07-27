@@ -7,6 +7,21 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- `wikijs_group_get` dan `wikijs_group_update` (domain `groups`) selalu gagal HTTP 400
+  `GRAPHQL_VALIDATION_FAILED` terhadap Wiki.js 2.x sungguhan: `groups.single` menyeleksi
+  `userCount` (field itu hanya ada di `GroupMinimal`, bukan `Group`) dan `pageRules` tanpa
+  subfield, sementara `groups.update` mengirim kelima argumen sebagai variabel opsional
+  padahal skema Wiki.js 2.x mewajibkannya non-null (**REPLACE-ALL**, bukan patch-per-field
+  seperti diklaim sebelumnya di `[0.2.0]`). `wikijs_group_update` kini melakukan
+  read-modify-write: bila ada argumen opsional yang tidak diisi, tool membaca state group
+  saat ini lebih dulu lalu menggabungkannya sebelum mengirim mutation — signature publik
+  tool tidak berubah. `page_rules` kini divalidasi lokal (`ValueError` sebelum request HTTP)
+  dan otomatis diberi `id` (UUID) bila belum ada. Seluruh dokumen GraphQL `tools/groups.py`
+  kini divalidasi otomatis di `make test` terhadap SDL Wiki.js 2.x yang di-commit
+  (`tests/schema/wikijs-2.x.graphql`) agar ketidakcocokan skema serupa gagal di test, bukan
+  di produksi. Lihat `andhit-r/wikijs-mcp#4`.
+
 ## [0.2.0] - 2026-07-27
 
 ### Added
