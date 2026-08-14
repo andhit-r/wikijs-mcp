@@ -1,6 +1,7 @@
-"""Tool MCP untuk membaca & menjalankan aksi Storage Wiki.js (domain ``storage``).
+"""Tool MCP untuk membaca, mengubah & menjalankan aksi Storage Wiki.js (domain ``storage``).
 
-Mendaftarkan tool: storage_target_list, storage_status, storage_action_execute.
+Mendaftarkan tool: storage_target_list, storage_status, storage_action_execute,
+storage_target_update.
 
 Storage adalah mekanisme Wiki.js untuk mencerminkan konten wiki ke penyimpanan
 eksternal (Git, S3, disk, dsb). Aksi paling sering dipakai adalah **Force Sync**
@@ -15,6 +16,13 @@ Administrators), sama seperti domain ``mail``.
 ``sshPrivateKeyContent`` pada target ``git``). Nilai untuk key yang terdaftar di
 :data:`_REDACTED_CONFIG_KEYS` selalu disensor menjadi ``"***"`` — tidak ada opsi
 untuk membuka nilai aslinya lewat MCP.
+
+``Mutation.storage.updateTargets`` bersemantik **REPLACE-ALL**: argumennya
+menerima seluruh nilai sebuah target sekaligus, sehingga panggilan yang hanya
+mengirim satu-dua field akan menghapus sisa konfigurasinya. Karena itu
+:func:`wikijs_storage_target_update` selalu melakukan **read-modify-write** di
+dalam tool dan menolak nilai ``config`` yang berisi
+:data:`_REDACTED_PLACEHOLDER`.
 
 Mutation Wiki.js mengembalikan ``responseResult { succeeded errorCode message }``
 — HTTP 200 + ``succeeded=false`` bukan sukses; divalidasi via
@@ -237,3 +245,159 @@ def register(mcp: FastMCP, client: WikiJSGraphQLClient) -> None:
         result = data.get("storage", {}).get("executeAction", {})
         _check_response_result(result.get("responseResult", {}), "storage_action_execute")
         return {"status": "executed", "target_key": target_key, "handler": handler}
+
+    @mcp.tool(tags={"storage"})
+    async def wikijs_storage_target_update(
+        target_key: str,
+        is_enabled: bool | None = None,
+        mode: str | None = None,
+        sync_interval: str | None = None,
+        config: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Ubah sebagian konfigurasi satu target storage Wiki.js (partial update).
+
+        Contoh pemakaian: mengaktifkan target ``git``
+        (``is_enabled=True``), mengganti jadwal sinkronisasi
+        (``sync_interval="PT5M"``), atau memindahkan branch tujuan
+        (``config={"branch": "main"}``) — hal-hal yang sebelumnya hanya bisa
+        dilakukan lewat *Admin → Storage*.
+
+        PERINGATAN — ``Mutation.storage.updateTargets`` Wiki.js bersemantik
+        **REPLACE-ALL**: satu panggilan mengirim seluruh nilai target sekaligus,
+        sehingga field yang tidak disertakan akan **terhapus**. Tool ini
+        menutupi jebakan itu dengan **read-modify-write**: ia membaca dulu
+        target yang bersangkutan lewat ``Query.storage.targets``, menerapkan
+        argumen yang bukan ``None``, lalu mengirim kembali target itu **utuh**.
+        Argumen bernilai ``None`` berarti "jangan ubah", bukan "kosongkan".
+
+        DILARANG mengirim nilai ``"***"`` pada ``config``. Nilai itu adalah
+        sentinel redaksi keluaran :func:`wikijs_storage_target_list`; alur wajar
+        "baca → salin → ubah sedikit → tulis" akan menimpa kredensial asli
+        (``basicPassword``, ``sshPrivateKeyContent``) dengan literal ``"***"``.
+        Tool menolaknya dengan ``ValueError`` sebelum ada request HTTP terkirim.
+        Bila kredensial memang perlu diganti, kirim nilai barunya yang
+        sebenarnya.
+
+        Args:
+            target_key: Kunci target storage yang diubah, mis. ``"git"``. Wajib
+                diisi (tidak boleh kosong/whitespace) dan wajib ada di antara
+                target yang dikembalikan Wiki.js.
+            is_enabled: Aktifkan (``True``) atau nonaktifkan (``False``) target.
+                ``None`` = pertahankan nilai saat ini.
+            mode: Mode sinkronisasi, mis. ``"sync"``/``"push"``/``"pull"``.
+                Nilai yang sah ada di ``supportedModes`` pada
+                :func:`wikijs_storage_target_list`. ``None`` = tidak diubah.
+            sync_interval: Jadwal sinkronisasi berformat durasi ISO-8601, mis.
+                ``"PT5M"`` (5 menit) atau ``"P1D"`` (1 hari). ``None`` = tidak
+                diubah.
+            config: Key konfigurasi yang ingin ditimpa, mis.
+                ``{"branch": "main"}``. Di-**merge per key** ke konfigurasi saat
+                ini — key yang tidak disebut dipertahankan apa adanya. Key yang
+                belum ada pada target ditolak (proteksi salah ketik), bukan
+                ditambahkan diam-diam. ``None`` = konfigurasi tidak disentuh.
+
+        Returns:
+            Dict ``{"status": "updated", "target_key": target_key}``. Nilai
+            ``config`` sengaja **tidak** di-echo agar kredensial tidak nyangkut
+            di transcript client.
+
+        Raises:
+            ValueError: Bila ``target_key`` kosong/whitespace, ada nilai
+                ``config`` yang sama persis dengan ``"***"``, ``target_key``
+                tidak ditemukan di antara target Wiki.js, atau ``config`` memuat
+                key yang tidak ada pada konfigurasi target saat ini. Dua kasus
+                pertama dilempar sebelum ada request HTTP sama sekali.
+            WikiJSAPIError: Bila HTTP 403 (API key tanpa hak ``manage:system``)
+                atau ``responseResult.succeeded=false``.
+        """
+        if not target_key or not target_key.strip():
+            raise ValueError("target_key tidak boleh kosong")
+        if config:
+            redacted_keys = sorted(
+                key for key, value in config.items() if value == _REDACTED_PLACEHOLDER
+            )
+            if redacted_keys:
+                raise ValueError(
+                    "config memuat nilai tersensor '***' pada key "
+                    f"{redacted_keys} — nilai itu adalah sentinel redaksi "
+                    "wikijs_storage_target_list, bukan kredensial asli. Kirim "
+                    "nilai sebenarnya atau hilangkan key tersebut."
+                )
+
+        query = """
+        query {
+          storage {
+            targets {
+              isEnabled
+              key
+              mode
+              syncInterval
+              config {
+                key
+                value
+              }
+            }
+          }
+        }
+        """
+        data = await client.execute(query, operation="storage_target_update_read")
+        targets = data.get("storage", {}).get("targets") or []
+        current = next(
+            (
+                target
+                for target in targets
+                if isinstance(target, dict) and target.get("key") == target_key
+            ),
+            None,
+        )
+        if current is None:
+            known = sorted(str(target.get("key")) for target in targets if isinstance(target, dict))
+            raise ValueError(
+                f"target_key '{target_key}' tidak ditemukan di Wiki.js; "
+                f"target yang tersedia: {known}"
+            )
+
+        merged_config = [
+            {"key": entry.get("key"), "value": entry.get("value")}
+            for entry in (current.get("config") or [])
+            if isinstance(entry, dict)
+        ]
+        if config:
+            known_config_keys = {entry["key"] for entry in merged_config}
+            unknown = sorted(set(config) - known_config_keys)
+            if unknown:
+                raise ValueError(
+                    f"key config {unknown} tidak dikenal target '{target_key}'; "
+                    f"key yang tersedia: {sorted(known_config_keys)}"
+                )
+            for entry in merged_config:
+                if entry["key"] in config:
+                    entry["value"] = config[entry["key"]]
+
+        target_input = {
+            "isEnabled": current.get("isEnabled") if is_enabled is None else is_enabled,
+            "key": target_key,
+            "mode": current.get("mode") if mode is None else mode,
+            "syncInterval": (
+                current.get("syncInterval") if sync_interval is None else sync_interval
+            ),
+            "config": merged_config,
+        }
+
+        mutation = """
+        mutation($targets: [StorageTargetInput]!) {
+          storage {
+            updateTargets(targets: $targets) {
+              responseResult { succeeded errorCode message }
+            }
+          }
+        }
+        """
+        data = await client.execute(
+            mutation,
+            {"targets": [target_input]},
+            operation="storage_target_update",
+        )
+        result = data.get("storage", {}).get("updateTargets", {})
+        _check_response_result(result.get("responseResult", {}), "storage_target_update")
+        return {"status": "updated", "target_key": target_key}

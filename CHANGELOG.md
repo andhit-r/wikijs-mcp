@@ -8,6 +8,20 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
+- Tool **`wikijs_storage_target_update(target_key, is_enabled, mode, sync_interval, config)`**
+  (domain `storage`): mengubah konfigurasi satu target storage dengan semantik **partial
+  update** — argumen bernilai `None` berarti "jangan ubah" dan `config` di-**merge per key**.
+  Sebelumnya mengaktifkan target `git`, mengganti `syncInterval`, atau memindahkan `branch`
+  hanya bisa lewat Admin UI. `Mutation.storage.updateTargets` Wiki.js sendiri bersemantik
+  **REPLACE-ALL** (satu panggilan menimpa seluruh nilai target), jadi tool melakukan
+  **read-modify-write** di dalam dirinya: membaca target lewat `Query.storage.targets` lebih
+  dulu, menerapkan override, lalu mengirim target itu utuh — field yang tak disebut tidak
+  terhapus. Key `config` yang tidak dikenal target dan `target_key` yang tidak ditemukan
+  ditolak dengan `ValueError`; nilai `config` yang sama persis dengan `"***"` juga ditolak
+  sebelum ada request HTTP karena itu sentinel redaksi `wikijs_storage_target_list`, bukan
+  kredensial asli. Kembalian tidak meng-echo `config`. SDL offline diperluas dengan
+  `StorageMutation.updateTargets`, `StorageTargetInput`, dan `KeyValuePairInput`. Menuntut
+  API key ber-hak `manage:system`. Lihat `andhit-r/wikijs-mcp#9`.
 - Domain tool baru **`storage`** (`src/wikijs_mcp/tools/storage.py`): `wikijs_storage_target_list`
   (daftar seluruh target storage beserta `actions { handler label hint }`),
   `wikijs_storage_status` (status sinkronisasi terakhir tiap target), dan

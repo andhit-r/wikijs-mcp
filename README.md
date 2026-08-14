@@ -13,14 +13,14 @@ MCP server untuk mengakses **Wiki.js** melalui GraphQL API, dibangun dengan Fast
 | users | `wikijs_user_list`, `wikijs_user_get`, `wikijs_user_create`, `wikijs_user_update`, `wikijs_user_delete`, `wikijs_user_activate`, `wikijs_user_deactivate`, `wikijs_user_enable_tfa`, `wikijs_user_disable_tfa` |
 | system | `wikijs_system_info` |
 | mail | `wikijs_mail_update_config`, `wikijs_mail_send_test` |
-| storage | `wikijs_storage_target_list`, `wikijs_storage_status`, `wikijs_storage_action_execute` |
+| storage | `wikijs_storage_target_list`, `wikijs_storage_status`, `wikijs_storage_action_execute`, `wikijs_storage_target_update` |
 
 > **Domain `mail` menuntut hak `manage:system`.** Berbeda dari domain lain, kedua tool
 > `mail` hanya bisa dipakai dengan API key Wiki.js milik grup Administrators (hak
 > `manage:system`). `wikijs_mail_update_config` juga bersifat REPLACE-ALL — satu
 > panggilan menimpa seluruh konfigurasi mail instance, bukan hanya field yang disebut.
 
-> **Domain `storage` juga menuntut hak `manage:system`.** Ketiga tool `storage` hanya
+> **Domain `storage` juga menuntut hak `manage:system`.** Keempat tool `storage` hanya
 > bisa dipakai dengan API key milik grup Administrators. **Force Sync** (tombol di
 > *Admin → Storage*) dijalankan dengan
 > `wikijs_storage_action_execute(target_key="git", handler="sync")`.
@@ -30,6 +30,14 @@ MCP server untuk mengakses **Wiki.js** melalui GraphQL API, dibangun dengan Fast
 > `wikijs_storage_target_list` untuk menemukan handler yang tersedia, dan perhatikan
 > bahwa sebagian di antaranya destruktif (`purge` menghapus repo Git lokal, `importAll`
 > menimpa konten wiki dari repo lokal).
+>
+> `wikijs_storage_target_update(target_key, is_enabled, mode, sync_interval, config)`
+> mengubah konfigurasi **satu** target dengan semantik **partial update**: argumen yang
+> tidak diisi berarti "jangan ubah", dan `config` di-merge per key. Mutation Wiki.js di
+> baliknya (`storage.updateTargets`) sebenarnya REPLACE-ALL, jadi tool melakukan
+> read-modify-write sendiri agar field yang tak disebut tidak terhapus. Key `config` yang
+> belum ada pada target ditolak (`ValueError`), begitu pula nilai `"***"` — itu sentinel
+> redaksi `wikijs_storage_target_list`, bukan kredensial asli.
 
 ## Konfigurasi
 

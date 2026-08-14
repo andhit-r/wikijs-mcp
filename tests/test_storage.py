@@ -298,14 +298,268 @@ async def test_storage_action_execute_validation_errors(
 
 
 async def test_storage_tools_registered_with_tag(mcp: FastMCP) -> None:
-    """Ketiga tool storage terdaftar di server MCP dan bertag `storage`."""
+    """Keempat tool storage terdaftar di server MCP dan bertag `storage`."""
     tools = {tool.name: tool for tool in await mcp.list_tools()}
 
     expected = {
         "wikijs_storage_target_list",
         "wikijs_storage_status",
         "wikijs_storage_action_execute",
+        "wikijs_storage_target_update",
     }
     assert expected <= set(tools)
     for name in expected:
         assert "storage" in tools[name].tags
+
+
+# ---------------------------------------------------------------------------
+# wikijs_storage_target_update (andhit-r/wikijs-mcp#9)
+#
+# Alur read-modify-write memakai DUA request berurutan: query storage.targets
+# lalu mutation storage.updateTargets. Karena kedua request menuju URL yang
+# sama, mock-nya memakai `side_effect` berisi daftar respons berurutan.
+# ---------------------------------------------------------------------------
+
+_UPDATE_SUCCESS_RESPONSE = {
+    "data": {
+        "storage": {
+            "updateTargets": {
+                "responseResult": {"succeeded": True, "errorCode": 0, "message": ""},
+            }
+        }
+    }
+}
+
+
+def _mock_read_then_write(respx_mock, write_response: dict | None = None):
+    """Pasang mock dua tahap: query targets, lalu mutation updateTargets.
+
+    Args:
+        respx_mock: Fixture router respx aktif.
+        write_response: Body JSON untuk request kedua (mutation). Default
+            :data:`_UPDATE_SUCCESS_RESPONSE`.
+
+    Returns:
+        Route respx yang terpasang, agar test bisa memeriksa
+        ``route.calls`` (jumlah request dan isi variabelnya).
+    """
+    return respx_mock.post(GRAPHQL_URL).mock(
+        side_effect=[
+            httpx.Response(200, json=_TARGETS_RESPONSE),
+            httpx.Response(200, json=write_response or _UPDATE_SUCCESS_RESPONSE),
+        ]
+    )
+
+
+def _sent_target(route) -> dict:
+    """Ambil satu-satunya entri `targets` dari variabel mutation terakhir."""
+    variables = json.loads(route.calls.last.request.content)["variables"]
+    assert len(variables["targets"]) == 1
+    return variables["targets"][0]
+
+
+async def test_storage_target_update_merges_config_per_key(mcp: FastMCP, respx_mock) -> None:
+    """`config={"branch": ...}` mengirim ulang SELURUH key lama, hanya `branch` berubah."""
+    route = _mock_read_then_write(respx_mock)
+
+    data = await call_tool(
+        mcp,
+        "wikijs_storage_target_update",
+        {"target_key": "git", "config": {"branch": "main"}},
+    )
+
+    assert data == {"status": "updated", "target_key": "git"}
+    assert len(route.calls) == 2
+    sent = _sent_target(route)
+    sent_config = {entry["key"]: entry["value"] for entry in sent["config"]}
+    assert set(sent_config) == {
+        "authType",
+        "repoUrl",
+        "branch",
+        "basicPassword",
+        "sshPrivateKeyContent",
+    }
+    assert sent_config["branch"] == "main"
+    assert sent_config["repoUrl"] == "git@github.com:example/wiki-content.git"
+    assert sent_config["authType"] == "ssh"
+
+
+async def test_storage_target_update_sends_unredacted_credentials(mcp: FastMCP, respx_mock) -> None:
+    """Kredensial dikirim ulang dengan nilai ASLI dari query, bukan sentinel '***'."""
+    route = _mock_read_then_write(respx_mock)
+
+    await call_tool(
+        mcp,
+        "wikijs_storage_target_update",
+        {"target_key": "git", "config": {"branch": "main"}},
+    )
+
+    sent_config = {entry["key"]: entry["value"] for entry in _sent_target(route)["config"]}
+    assert sent_config["basicPassword"] == _DUMMY_BASIC_PASSWORD
+    assert sent_config["sshPrivateKeyContent"] == _DUMMY_SSH_PRIVATE_KEY
+    assert "***" not in sent_config.values()
+
+
+async def test_storage_target_update_keeps_untouched_fields(mcp: FastMCP, respx_mock) -> None:
+    """Hanya `sync_interval` diisi → isEnabled/mode/config identik dengan hasil query."""
+    route = _mock_read_then_write(respx_mock)
+
+    await call_tool(
+        mcp,
+        "wikijs_storage_target_update",
+        {"target_key": "git", "sync_interval": "PT5M"},
+    )
+
+    sent = _sent_target(route)
+    assert sent["syncInterval"] == "PT5M"
+    assert sent["key"] == "git"
+    assert sent["isEnabled"] is True
+    assert sent["mode"] == "sync"
+    assert sent["config"] == _GIT_TARGET["config"]
+
+
+async def test_storage_target_update_disable_only(mcp: FastMCP, respx_mock) -> None:
+    """`is_enabled=False` saja → sisa field target dikirim ulang apa adanya."""
+    route = _mock_read_then_write(respx_mock)
+
+    await call_tool(
+        mcp,
+        "wikijs_storage_target_update",
+        {"target_key": "git", "is_enabled": False},
+    )
+
+    sent = _sent_target(route)
+    assert sent["isEnabled"] is False
+    assert sent["mode"] == "sync"
+    assert sent["syncInterval"] == "P2D"
+    assert sent["config"] == _GIT_TARGET["config"]
+
+
+async def test_storage_target_update_mode_override(mcp: FastMCP, respx_mock) -> None:
+    """`mode` yang diisi menimpa nilai bacaan, field lain tetap."""
+    route = _mock_read_then_write(respx_mock)
+
+    await call_tool(
+        mcp,
+        "wikijs_storage_target_update",
+        {"target_key": "git", "mode": "push"},
+    )
+
+    sent = _sent_target(route)
+    assert sent["mode"] == "push"
+    assert sent["isEnabled"] is True
+    assert sent["syncInterval"] == "P2D"
+
+
+async def test_storage_target_update_unknown_config_key(mcp: FastMCP, respx_mock) -> None:
+    """Key config asing → ValueError setelah query, TANPA mutation terkirim."""
+    route = _mock_read_then_write(respx_mock)
+
+    with pytest.raises(Exception) as exc:
+        await call_tool(
+            mcp,
+            "wikijs_storage_target_update",
+            {"target_key": "git", "config": {"brunch": "main"}},
+        )
+
+    assert "brunch" in str(exc.value)
+    assert len(route.calls) == 1
+
+
+async def test_storage_target_update_rejects_redacted_value(mcp: FastMCP, respx_mock) -> None:
+    """Nilai '***' → ValueError tanpa request apa pun (query pun tidak perlu)."""
+    route = _mock_read_then_write(respx_mock)
+
+    with pytest.raises(Exception) as exc:
+        await call_tool(
+            mcp,
+            "wikijs_storage_target_update",
+            {"target_key": "git", "config": {"basicPassword": "***"}},
+        )
+
+    assert "***" in str(exc.value)
+    assert not route.called
+
+
+async def test_storage_target_update_unknown_target_key(mcp: FastMCP, respx_mock) -> None:
+    """`target_key` tak ada di hasil query → ValueError, mutation tidak dikirim."""
+    route = _mock_read_then_write(respx_mock)
+
+    with pytest.raises(Exception) as exc:
+        await call_tool(mcp, "wikijs_storage_target_update", {"target_key": "s3"})
+
+    assert "s3" in str(exc.value)
+    assert len(route.calls) == 1
+
+
+@pytest.mark.parametrize("target_key", ["", "   "])
+async def test_storage_target_update_empty_target_key(
+    mcp: FastMCP, respx_mock, target_key: str
+) -> None:
+    """`target_key` kosong/whitespace → ValueError tanpa request HTTP."""
+    route = _mock_read_then_write(respx_mock)
+
+    with pytest.raises(Exception) as exc:
+        await call_tool(mcp, "wikijs_storage_target_update", {"target_key": target_key})
+
+    assert "target_key" in str(exc.value)
+    assert not route.called
+
+
+async def test_storage_target_update_failed_response_result(mcp: FastMCP, respx_mock) -> None:
+    """responseResult.succeeded=false → WikiJSAPIError."""
+    _mock_read_then_write(
+        respx_mock,
+        {
+            "data": {
+                "storage": {
+                    "updateTargets": {
+                        "responseResult": {
+                            "succeeded": False,
+                            "errorCode": 6002,
+                            "message": "Invalid Storage Target",
+                        }
+                    }
+                }
+            }
+        },
+    )
+
+    with pytest.raises(Exception) as exc:
+        await call_tool(
+            mcp,
+            "wikijs_storage_target_update",
+            {"target_key": "git", "is_enabled": True},
+        )
+
+    assert "Invalid Storage Target" in str(exc.value)
+
+
+async def test_storage_target_update_forbidden(mcp: FastMCP, respx_mock) -> None:
+    """HTTP 403 pada tahap baca (API key tanpa manage:system) → WikiJSAPIError."""
+    respx_mock.post(GRAPHQL_URL).mock(
+        return_value=httpx.Response(403, json={"message": "Forbidden"})
+    )
+
+    with pytest.raises(Exception) as exc:
+        await call_tool(
+            mcp,
+            "wikijs_storage_target_update",
+            {"target_key": "git", "is_enabled": True},
+        )
+    assert "403" in str(exc.value) or "ditolak" in str(exc.value).lower()
+
+
+async def test_storage_target_update_does_not_echo_config(mcp: FastMCP, respx_mock) -> None:
+    """Kembalian tidak meng-echo `config` agar kredensial tak nyangkut di transcript."""
+    _mock_read_then_write(respx_mock)
+
+    data = await call_tool(
+        mcp,
+        "wikijs_storage_target_update",
+        {"target_key": "git", "config": {"repoUrl": "git@github.com:example/lain.git"}},
+    )
+
+    assert data == {"status": "updated", "target_key": "git"}
+    assert "config" not in data
+    assert "lain.git" not in json.dumps(data)

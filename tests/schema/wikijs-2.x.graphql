@@ -372,11 +372,11 @@ type SystemInfo {
 }
 
 # ---------------------------------------------------------------------------
-# STORAGE (andhit-r/wikijs-mcp#8) — bentuk hasil introspeksi instance Wiki.js
-# 2.x target (server/graph/schemas/storage.graphql upstream Requarks/wiki).
-# Mutation.storage.updateTargets beserta StorageTargetInput SENGAJA belum
-# dituliskan: di luar cakupan #8 (semantik replace-all + menyentuh kredensial),
-# menyusul bersama andhit-r/wikijs-mcp#9.
+# STORAGE (andhit-r/wikijs-mcp#8, diperluas andhit-r/wikijs-mcp#9) — bentuk hasil
+# introspeksi instance Wiki.js 2.x target (server/graph/schemas/storage.graphql
+# upstream Requarks/wiki). Mutation.storage.updateTargets bersemantik REPLACE-ALL:
+# `targets` menerima SELURUH nilai tiap target sekaligus, sehingga field yang tidak
+# disertakan akan terhapus — lihat read-modify-write di tools/storage.py.
 # ---------------------------------------------------------------------------
 
 type StorageQuery {
@@ -386,6 +386,20 @@ type StorageQuery {
 
 type StorageMutation {
   executeAction(targetKey: String!, handler: String!): DefaultResponse
+  updateTargets(targets: [StorageTargetInput]!): DefaultResponse
+}
+
+input StorageTargetInput {
+  isEnabled: Boolean!
+  key: String!
+  mode: String!
+  syncInterval: String
+  config: [KeyValuePairInput]
+}
+
+input KeyValuePairInput {
+  key: String!
+  value: String!
 }
 
 type StorageTarget {
