@@ -7,6 +7,23 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Domain tool baru **`storage`** (`src/wikijs_mcp/tools/storage.py`): `wikijs_storage_target_list`
+  (daftar seluruh target storage beserta `actions { handler label hint }`),
+  `wikijs_storage_status` (status sinkronisasi terakhir tiap target), dan
+  `wikijs_storage_action_execute(target_key, handler)` (menjalankan aksi target —
+  **Force Sync** = `target_key="git"`, `handler="sync"`). Sebelumnya Force Sync hanya bisa
+  ditekan lewat Admin UI sehingga konten wiki harus menunggu jadwal `syncInterval` untuk
+  mendarat di repo Git. Nilai konfigurasi yang bersifat kredensial (`basicPassword`,
+  `sshPrivateKeyContent`) selalu disensor menjadi `***` — disaring berdasarkan nama key dan
+  tanpa opsi untuk membukanya lewat MCP. Handler sengaja tidak di-daftar-putih (daftarnya
+  data per target/versi Wiki.js); handler tak dikenal ditolak Wiki.js lewat `responseResult`
+  dan diangkat jadi `WikiJSAPIError`. Ketiga tool menuntut API key ber-hak `manage:system`.
+  SDL offline `tests/schema/wikijs-2.x.graphql` diperluas dengan `StorageQuery`,
+  `StorageMutation`, `StorageTarget`, `StorageStatus`, `StorageTargetAction`, dan
+  `KeyValuePair` sehingga modul baru ini lolos gate validasi skema sejak commit pertama.
+  Lihat `andhit-r/wikijs-mcp#8`.
+
 ### Fixed
 - `wikijs_group_get` dan `wikijs_group_update` (domain `groups`) selalu gagal HTTP 400
   `GRAPHQL_VALIDATION_FAILED` terhadap Wiki.js 2.x sungguhan: `groups.single` menyeleksi

@@ -13,11 +13,23 @@ MCP server untuk mengakses **Wiki.js** melalui GraphQL API, dibangun dengan Fast
 | users | `wikijs_user_list`, `wikijs_user_get`, `wikijs_user_create`, `wikijs_user_update`, `wikijs_user_delete`, `wikijs_user_activate`, `wikijs_user_deactivate`, `wikijs_user_enable_tfa`, `wikijs_user_disable_tfa` |
 | system | `wikijs_system_info` |
 | mail | `wikijs_mail_update_config`, `wikijs_mail_send_test` |
+| storage | `wikijs_storage_target_list`, `wikijs_storage_status`, `wikijs_storage_action_execute` |
 
 > **Domain `mail` menuntut hak `manage:system`.** Berbeda dari domain lain, kedua tool
 > `mail` hanya bisa dipakai dengan API key Wiki.js milik grup Administrators (hak
 > `manage:system`). `wikijs_mail_update_config` juga bersifat REPLACE-ALL — satu
 > panggilan menimpa seluruh konfigurasi mail instance, bukan hanya field yang disebut.
+
+> **Domain `storage` juga menuntut hak `manage:system`.** Ketiga tool `storage` hanya
+> bisa dipakai dengan API key milik grup Administrators. **Force Sync** (tombol di
+> *Admin → Storage*) dijalankan dengan
+> `wikijs_storage_action_execute(target_key="git", handler="sync")`.
+> `wikijs_storage_target_list` menyensor nilai konfigurasi yang bersifat kredensial
+> (`basicPassword`, `sshPrivateKeyContent`) menjadi `***` — nilai aslinya tidak bisa
+> dibaca lewat MCP. Handler tidak di-daftar-putih: pakai `actions` dari
+> `wikijs_storage_target_list` untuk menemukan handler yang tersedia, dan perhatikan
+> bahwa sebagian di antaranya destruktif (`purge` menghapus repo Git lokal, `importAll`
+> menimpa konten wiki dari repo lokal).
 
 ## Konfigurasi
 

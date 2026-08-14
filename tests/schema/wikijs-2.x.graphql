@@ -1,5 +1,6 @@
 # SDL Wiki.js 2.x — domain "groups", "pages" (termasuk "tags" & "search" yang
-# menumpang padanya), "users", "mail", "system", beserta tipe yang dirujuknya.
+# menumpang padanya), "users", "mail", "system", "storage", beserta tipe yang
+# dirujuknya.
 #
 # Sumber domain "groups": skema GraphQL resmi Wiki.js 2.x (server/graph/schemas/
 # group.graphql + common.graphql upstream Requarks/wiki), diringkas SEKALIGUS
@@ -45,6 +46,7 @@ type Query {
   pages: PageQuery
   users: UserQuery
   system: SystemQuery
+  storage: StorageQuery
 }
 
 type Mutation {
@@ -52,6 +54,7 @@ type Mutation {
   pages: PageMutation
   users: UserMutation
   mail: MailMutation
+  storage: StorageMutation
 }
 
 # ---------------------------------------------------------------------------
@@ -369,7 +372,60 @@ type SystemInfo {
 }
 
 # ---------------------------------------------------------------------------
-# COMMON — dipakai lintas domain (groups, pages, users, mail).
+# STORAGE (andhit-r/wikijs-mcp#8) — bentuk hasil introspeksi instance Wiki.js
+# 2.x target (server/graph/schemas/storage.graphql upstream Requarks/wiki).
+# Mutation.storage.updateTargets beserta StorageTargetInput SENGAJA belum
+# dituliskan: di luar cakupan #8 (semantik replace-all + menyentuh kredensial),
+# menyusul bersama andhit-r/wikijs-mcp#9.
+# ---------------------------------------------------------------------------
+
+type StorageQuery {
+  targets: [StorageTarget]
+  status: [StorageStatus]
+}
+
+type StorageMutation {
+  executeAction(targetKey: String!, handler: String!): DefaultResponse
+}
+
+type StorageTarget {
+  isAvailable: Boolean!
+  isEnabled: Boolean!
+  key: String!
+  title: String!
+  description: String
+  logo: String
+  website: String
+  supportedModes: [String]
+  mode: String
+  hasSchedule: Boolean!
+  syncInterval: String
+  syncIntervalDefault: String
+  config: [KeyValuePair]
+  actions: [StorageTargetAction]
+}
+
+type StorageStatus {
+  key: String!
+  title: String!
+  status: String!
+  message: String!
+  lastAttempt: String!
+}
+
+type StorageTargetAction {
+  handler: String!
+  label: String!
+  hint: String!
+}
+
+type KeyValuePair {
+  key: String!
+  value: String!
+}
+
+# ---------------------------------------------------------------------------
+# COMMON — dipakai lintas domain (groups, pages, users, mail, storage).
 # ---------------------------------------------------------------------------
 
 type DefaultResponse {

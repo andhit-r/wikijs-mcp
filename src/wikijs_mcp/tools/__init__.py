@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastmcp import FastMCP
 
 from ..client import WikiJSGraphQLClient
-from . import groups, mail, pages, search, system, tags, users
+from . import groups, mail, pages, search, storage, system, tags, users
 
 # Urutan modul menentukan urutan registrasi (dan urutan tampil di dokumentasi).
 _MODULES = [
@@ -21,6 +21,7 @@ _MODULES = [
     users,
     system,
     mail,
+    storage,
 ]
 
 
