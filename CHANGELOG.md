@@ -7,6 +7,8 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-14
+
 ### Added
 - Tool **`wikijs_storage_target_update(target_key, is_enabled, mode, sync_interval, config)`**
   (domain `storage`): mengubah konfigurasi satu target storage dengan semantik **partial
