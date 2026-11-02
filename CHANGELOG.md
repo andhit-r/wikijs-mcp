@@ -7,6 +7,8 @@ dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-02
+
 ### Changed
 - Workflow rilis (`release.yml`) kini menerbitkan image GHCR multi-arch `linux/amd64` dan
   `linux/arm64` (input `platforms` pada caller `ghcr.yml@v2`) agar server MCP dapat berjalan di
